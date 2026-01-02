@@ -46,6 +46,7 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=False)
     street = db.Column(db.String(200), nullable=False)
     city = db.Column(db.String(100), nullable=False)
     state = db.Column(db.String(100), nullable=False)
@@ -66,6 +67,7 @@ class Order(db.Model):
             'id': self.id,
             'name': self.name,
             'email': self.email,
+            'phone_number': self.phone_number,
             'street': self.street,
             'city': self.city,
             'state': self.state,
@@ -167,6 +169,7 @@ We have received your order with the following details:
 Your order details:
 - Name: {order.name}
 - Email: {order.email}
+- Phone: {order.phone_number}
 - Shipping Address: {order.street}, {order.city}, {order.state}, {order.country}
 
 Order Items:
@@ -190,6 +193,7 @@ The Team
     <ul>
         <li><strong>Name:</strong> {order.name}</li>
         <li><strong>Email:</strong> {order.email}</li>
+        <li><strong>Phone:</strong> {order.phone_number}</li>
         <li><strong>Shipping Address:</strong> {order.street}, {order.city}, {order.state}, {order.country}</li>
     </ul>
 
@@ -290,6 +294,7 @@ Reference Code: {order.reference_code}
 Payment Code: {order.payment_code}
 Name: {order.name}
 Email: {order.email}
+Phone: {order.phone_number}
 Street: {order.street}
 City: {order.city}
 State: {order.state}
@@ -327,6 +332,10 @@ Please review and process this order.
         <tr>
             <td><strong>Email</strong></td>
             <td>{order.email}</td>
+        </tr>
+        <tr>
+            <td><strong>Phone</strong></td>
+            <td>{order.phone_number}</td>
         </tr>
         <tr>
             <td><strong>Street</strong></td>
@@ -420,7 +429,7 @@ def create_order():
             return jsonify({'error': 'Request must be JSON'}), 400
 
         # Validate required fields (removed reference_code as it's auto-generated)
-        required_fields = ['name', 'email', 'street', 'city', 'state', 'country', 'items']
+        required_fields = ['name', 'email', 'phone_number', 'street', 'city', 'state', 'country', 'items']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
@@ -450,6 +459,7 @@ def create_order():
         order = Order(
             name=data['name'],
             email=data['email'],
+            phone_number=data['phone_number'],
             street=data['street'],
             city=data['city'],
             state=data['state'],
@@ -506,7 +516,7 @@ def update_order(order_id):
             return jsonify({'error': 'Request must be JSON'}), 400
 
         # Update basic fields if provided
-        updateable_fields = ['name', 'email', 'street', 'city', 'state', 'country']
+        updateable_fields = ['name', 'email', 'phone_number', 'street', 'city', 'state', 'country']
         for field in updateable_fields:
             if field in data:
                 setattr(order, field, data[field])
