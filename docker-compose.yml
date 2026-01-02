@@ -14,3 +14,7 @@ services:
       - ohship_default
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+networks:
+  ohship_default:
+    external: true
