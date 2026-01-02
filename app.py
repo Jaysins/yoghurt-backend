@@ -4,6 +4,7 @@ import random
 import string
 import requests
 import threading
+import base64
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
@@ -208,80 +209,119 @@ def send_customer_email(order_data):
             sender=app.config['MAIL_DEFAULT_SENDER']
         )
         msg.body = f"""
-Dear {order_data['name']},
+        Dear {order_data['name']},
 
-Thank you for your order!
+        Thank you for your order!
 
-We have received your order with the following details:
-- Order Reference: {order_data['reference_code']}
-- Payment Code: {order_data['payment_code']}
+        We have successfully received your payment proof and your order is currently being reviewed.
+        Once payment is verified, your order will be prepared and shipped promptly.
 
-Your order details:
-- Name: {order_data['name']}
-- Email: {order_data['email']}
-- Phone: {order_data['phone_number']}
-- Shipping Address: {order_data['street']}, {order_data['city']}, {order_data['state']}, {order_data['country']}
+        Order Summary:
+        - Order Reference: {order_data['reference_code']}
+        - Payment Code: {order_data['payment_code']}
 
-Order Items:
-{items_text}
-Total: ₦{total_amount:.2f}
-Best regards,
-The Team
-"""
+        Customer Details:
+        - Name: {order_data['name']}
+        - Email: {order_data['email']}
+        - Phone: {order_data['phone_number']}
+        - Shipping Address: {order_data['street']}, {order_data['city']}, {order_data['state']}, {order_data['country']}
+
+        Order Items:
+        {items_text}
+
+        Total Amount Paid: ₦{total_amount:.2f}
+
+        You will receive another notification once your order has been shipped.
+
+        Best regards,
+        The Team
+        """
+
         msg.html = f"""
-<html>
-<body>
-    <h2>Dear {order_data['name']},</h2>
-    <p>Thank you for your order!</p>
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <h2>Dear {order_data['name']},</h2>
 
-    <div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <p style="margin: 5px 0;"><strong>Order Reference:</strong> {order_data['reference_code']}</p>
-        <p style="margin: 5px 0;"><strong>Payment Code:</strong> <span style="font-size: 20px; color: #d9534f; font-weight: bold;">{order_data['payment_code']}</span></p>
-    </div>
+            <p>Thank you for your order!</p>
 
-    <h3>Your order details:</h3>
-    <ul>
-        <li><strong>Name:</strong> {order_data['name']}</li>
-        <li><strong>Email:</strong> {order_data['email']}</li>
-        <li><strong>Phone:</strong> {order_data['phone_number']}</li>
-        <li><strong>Shipping Address:</strong> {order_data['street']}, {order_data['city']}, {order_data['state']}, {order_data['country']}</li>
-    </ul>
+            <p>
+                We have <strong>successfully received your proof of payment</strong>.
+                Your order is currently under verification and will be shipped as soon as payment is confirmed.
+            </p>
 
-    <h3>Order Items:</h3>
-    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
-        <thead>
-            <tr style="background-color: #f2f2f2;">
-                <th>Item</th>
-                <th>Price</th>
-                <th>Quantity</th>
-                <th>Total</th>
-            </tr>
-        </thead>
-        <tbody>
-            {items_html}
-        </tbody>
-        <tfoot>
-            <tr style="font-weight: bold; background-color: #f2f2f2;">
-                <td colspan="3" style="text-align: right;">Total:</td>
-                <td>₦{total_amount:.2f}</td>
-            </tr>
-        </tfoot>
-    </table>
+            <div style="background-color: #e9f7ef; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p style="margin: 5px 0;"><strong>Order Reference:</strong> {order_data['reference_code']}</p>
+                <p style="margin: 5px 0;"><strong>Payment Code:</strong>
+                    <span style="font-size: 18px; color: #28a745; font-weight: bold;">
+                        {order_data['payment_code']}
+                    </span>
+                </p>
+                <p style="margin: 10px 0 0 0;">
+                    <strong>Status:</strong> Payment received — awaiting verification
+                </p>
+            </div>
 
-    <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
-        <h3 style="margin-top: 0;">PAYMENT INSTRUCTIONS</h3>
-        <p>When making your payment, please include the following code in your payment narration/description:</p>
-        <p style="font-size: 24px; font-weight: bold; color: #d9534f; text-align: center; margin: 15px 0;">{order_data['payment_code']}</p>
-        <p>This payment code helps us quickly identify and process your payment.</p>
-        <p>After making payment, upload your proof of payment to complete your order.</p>
-    </div>
+            <h3>Customer Details</h3>
+            <ul>
+                <li><strong>Name:</strong> {order_data['name']}</li>
+                <li><strong>Email:</strong> {order_data['email']}</li>
+                <li><strong>Phone:</strong> {order_data['phone_number']}</li>
+                <li><strong>Shipping Address:</strong>
+                    {order_data['street']}, {order_data['city']}, {order_data['state']}, {order_data['country']}
+                </li>
+            </ul>
 
-    <p>Best regards,<br>The Team</p>
-</body>
-</html>
-"""
+            <h3>Order Items</h3>
+            <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                    <tr style="background-color: #f2f2f2;">
+                        <th>Item</th>
+                        <th>Price</th>
+                        <th>Quantity</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items_html}
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight: bold; background-color: #f2f2f2;">
+                        <td colspan="3" style="text-align: right;">Total Paid:</td>
+                        <td>₦{total_amount:.2f}</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div style="background-color: #eef5ff; padding: 15px; border-left: 4px solid #0d6efd; margin: 20px 0;">
+                <h3 style="margin-top: 0;">What Happens Next?</h3>
+                <ul>
+                    <li>Your payment will be verified</li>
+                    <li>Your order will be processed and packaged</li>
+                    <li>You will receive a shipping confirmation once dispatched</li>
+                </ul>
+            </div>
+
+            <p>
+                If you have any questions, feel free to reply to this email.
+            </p>
+
+            <p>Best regards,<br>The Team</p>
+        </body>
+        </html>
+        """
+
         # Attach proof of payment if available
-        if order_data.get('proof_of_payment'):
+        if order_data.get('proof_of_payment_file'):
+            # Handle base64 encoded file (from external service)
+            file_data = base64.b64decode(order_data['proof_of_payment_file'])
+            filename = order_data.get('proof_of_payment_filename', 'proof_of_payment.jpg')
+            msg.attach(
+                filename,
+                'application/octet-stream',
+                file_data
+            )
+        elif order_data.get('proof_of_payment'):
+            # Handle local file path
             proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order_data['proof_of_payment'])
             if os.path.exists(proof_path):
                 with open(proof_path, 'rb') as fp:
@@ -443,7 +483,17 @@ Please review and process this order.
 </html>
 """
         # Attach proof of payment if available
-        if order_data.get('proof_of_payment'):
+        if order_data.get('proof_of_payment_file'):
+            # Handle base64 encoded file (from external service)
+            file_data = base64.b64decode(order_data['proof_of_payment_file'])
+            filename = order_data.get('proof_of_payment_filename', 'proof_of_payment.jpg')
+            msg.attach(
+                filename,
+                'application/octet-stream',
+                file_data
+            )
+        elif order_data.get('proof_of_payment'):
+            # Handle local file path
             proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order_data['proof_of_payment'])
             if os.path.exists(proof_path):
                 with open(proof_path, 'rb') as fp:
@@ -677,14 +727,25 @@ def upload_payment_proof(order_id):
                 # Send emails via external email service
                 print("Using outsourced email service")
 
+                # Prepare order data with base64 encoded file
+                prepared_order_data = {
+                    **order_data,
+                    'created_at': order_data['created_at'].isoformat() if hasattr(order_data['created_at'], 'isoformat') else str(order_data['created_at'])
+                }
+
+                # Encode proof of payment file as base64 if it exists
+                if order_data.get('proof_of_payment'):
+                    proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order_data['proof_of_payment'])
+                    if os.path.exists(proof_path):
+                        with open(proof_path, 'rb') as file:
+                            file_data = file.read()
+                            encoded_file = base64.b64encode(file_data).decode('utf-8')
+                            prepared_order_data['proof_of_payment_file'] = encoded_file
+                            prepared_order_data['proof_of_payment_filename'] = order_data['proof_of_payment']
+
                 # Prepare payload for external email service
                 email_payload = {
-                    'order_data': {
-                        **order_data,
-                        'created_at': order_data['created_at'].isoformat() if hasattr(order_data['created_at'],
-                                                                                      'isoformat')
-                        else str(order_data['created_at'])
-                    },
+                    'order_data': prepared_order_data,
                     'send_customer': True,
                     'send_admin': True
                 }
