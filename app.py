@@ -523,10 +523,6 @@ def create_order():
     Generates unique reference_code and payment_code automatically
     """
     try:
-        # Check if email service is outsourced and ping it in the background
-        if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
-            ping_email_service_async(app.config['EMAIL_SERVICE_BACKEND_URL'])
-
         data = request.get_json()
 
         if not data:
@@ -605,8 +601,6 @@ def update_order(order_id):
     Expected JSON body: Any of - name, email, street, city, state, country, items
     """
     try:
-        if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
-            ping_email_service_async(app.config['EMAIL_SERVICE_BACKEND_URL'])
 
         order = db.session.get(Order, order_id)
 
@@ -678,8 +672,6 @@ def upload_payment_proof(order_id):
     Changes order status to 'successful' and sends emails
     """
     try:
-        if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
-            ping_email_service_async(app.config['EMAIL_SERVICE_BACKEND_URL'])
 
         order = db.session.get(Order, order_id)
 
