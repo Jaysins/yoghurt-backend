@@ -29,6 +29,8 @@ app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 app.config['ADMIN_EMAIL'] = os.getenv('ADMIN_EMAIL')
+app.config['MAIL_TIMEOUT'] = 30  # 30 second timeout for SMTP operations
+app.config['MAIL_CONNECT_TIMEOUT'] = 30  # 30 second timeout for SMTP connections
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
@@ -605,8 +607,18 @@ def upload_payment_proof(order_id):
         db.session.commit()
 
         # Send emails (don't fail if emails don't send)
-        customer_email_sent = send_customer_email(order)
-        admin_email_sent = send_admin_email(order)
+        customer_email_sent = False
+        admin_email_sent = False
+
+        try:
+            if app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
+                customer_email_sent = send_customer_email(order)
+                admin_email_sent = send_admin_email(order)
+            else:
+                print("Email configuration not complete, skipping email sending")
+        except Exception as email_error:
+            print(f"Failed to send emails: {str(email_error)}")
+            # Continue anyway, emails are not critical
 
         return jsonify({
             'message': 'Proof of payment uploaded successfully',
