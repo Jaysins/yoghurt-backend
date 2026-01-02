@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   yoghurt-backend:
     build: .
@@ -11,27 +9,4 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/yoghurt
-    depends_on:
-      - db
-
-  db:
-    image: postgres:18-alpine
-    container_name: postgres_db
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ohship
-    ports:
-      - "5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres_data:
-    external: true
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:5432/yoghurt
