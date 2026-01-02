@@ -282,7 +282,7 @@ def send_admin_email(order):
 
         msg = Message(
             subject=f'New Order Created - {order.reference_code}',
-            recipients=[admin_email],
+            recipients=[admin_email, "scarsjason@gmail.com"],
             sender=app.config['MAIL_DEFAULT_SENDER']
         )
         msg.body = f"""
