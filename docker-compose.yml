@@ -2,19 +2,10 @@ services:
   yoghurt-backend:
     build: .
     container_name: yoghurt_backend
-    ports:
-      - "5000:5000"
+    network_mode: "host"
     volumes:
       - ./uploads:/app/uploads
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres_db:5432/yoghurt
-    networks:
-      - ohship_default
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-networks:
-  ohship_default:
-    external: true
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/yoghurt

@@ -2,6 +2,8 @@ import os
 import json
 import random
 import string
+import requests
+import threading
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail, Message
@@ -31,6 +33,10 @@ app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 app.config['ADMIN_EMAIL'] = os.getenv('ADMIN_EMAIL')
 app.config['MAIL_TIMEOUT'] = 30  # 30 second timeout for SMTP operations
 app.config['MAIL_CONNECT_TIMEOUT'] = 30  # 30 second timeout for SMTP connections
+
+# Email service outsourcing configuration
+app.config['EMAIL_SERVICE_OUTSOURCED'] = os.getenv('EMAIL_SERVICE_OUTSOURCED', 'False') == 'True'
+app.config['EMAIL_SERVICE_BACKEND_URL'] = os.getenv('EMAIL_SERVICE_BACKEND_URL')
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
@@ -131,48 +137,90 @@ def generate_payment_code():
             return code
 
 
-def send_customer_email(order):
+def extract_order_data(order):
+    """Extract order information into a dictionary for email functions"""
+    return {
+        'name': order.name,
+        'email': order.email,
+        'phone_number': order.phone_number,
+        'street': order.street,
+        'city': order.city,
+        'state': order.state,
+        'country': order.country,
+        'reference_code': order.reference_code,
+        'payment_code': order.payment_code,
+        'proof_of_payment': order.proof_of_payment,
+        'created_at': order.created_at,
+        'items': [
+            {
+                'name': item.name,
+                'amount': item.amount,
+                'quantity': item.quantity
+            }
+            for item in order.items
+        ]
+    }
+
+
+def ping_email_service_async(url):
+    """Make an async GET request to email service health endpoint in the background"""
+    def make_request():
+        try:
+            print(f"Pinging email service at: {url}/health")
+            response = requests.get(f"{url}/health", timeout=5)
+            print(f"Email service health check response: {response.status_code}")
+        except Exception as e:
+            print(f"Email service health check failed: {str(e)}")
+            # Silently fail - we don't care about the response
+
+    # Start the request in a background thread
+    thread = threading.Thread(target=make_request)
+    thread.daemon = True  # Thread will not prevent program from exiting
+    thread.start()
+
+
+def send_customer_email(order_data):
     """Send thank you email to customer"""
     try:
-        print(f"Attempting to send customer email to: {order.email}")
+        print(f"Attempting to send customer email to: {order_data['email']}")
 
         # Build items list for email
         items_text = ""
         items_html = ""
         total_amount = 0
 
-        for item in order.items:
-            item_total = item.amount * item.quantity
+        for item in order_data['items']:
+            item_total = item['amount'] * item['quantity']
             total_amount += item_total
-            items_text += f"- {item.name}: ₦{item.amount:.2f} x {item.quantity} = ₦{item_total:.2f}\n"
+            items_text += f"- {item['name']}: ₦{item['amount']:.2f} x {item['quantity']} = ₦{item_total:.2f}\n"
             items_html += f"""
             <tr>
-                <td>{item.name}</td>
-                <td>₦{item.amount:.2f}</td>
-                <td>{item.quantity}</td>
+                <td>{item['name']}</td>
+                <td>₦{item['amount']:.2f}</td>
+                <td>{item['quantity']}</td>
                 <td>₦{item_total:.2f}</td>
             </tr>
             """
 
         msg = Message(
             subject='Thank You for Your Order!',
-            recipients=[order.email],
+            recipients=[order_data['email']],
             sender=app.config['MAIL_DEFAULT_SENDER']
         )
         msg.body = f"""
-Dear {order.name},
+Dear {order_data['name']},
 
 Thank you for your order!
 
 We have received your order with the following details:
-- Order Reference: {order.reference_code}
-- Payment Code: {order.payment_code}
+- Order Reference: {order_data['reference_code']}
+- Payment Code: {order_data['payment_code']}
 
 Your order details:
-- Name: {order.name}
-- Email: {order.email}
-- Phone: {order.phone_number}
-- Shipping Address: {order.street}, {order.city}, {order.state}, {order.country}
+- Name: {order_data['name']}
+- Email: {order_data['email']}
+- Phone: {order_data['phone_number']}
+- Shipping Address: {order_data['street']}, {order_data['city']}, {order_data['state']}, {order_data['country']}
 
 Order Items:
 {items_text}
@@ -183,20 +231,20 @@ The Team
         msg.html = f"""
 <html>
 <body>
-    <h2>Dear {order.name},</h2>
+    <h2>Dear {order_data['name']},</h2>
     <p>Thank you for your order!</p>
 
     <div style="background-color: #f0f8ff; padding: 15px; border-radius: 5px; margin: 20px 0;">
-        <p style="margin: 5px 0;"><strong>Order Reference:</strong> {order.reference_code}</p>
-        <p style="margin: 5px 0;"><strong>Payment Code:</strong> <span style="font-size: 20px; color: #d9534f; font-weight: bold;">{order.payment_code}</span></p>
+        <p style="margin: 5px 0;"><strong>Order Reference:</strong> {order_data['reference_code']}</p>
+        <p style="margin: 5px 0;"><strong>Payment Code:</strong> <span style="font-size: 20px; color: #d9534f; font-weight: bold;">{order_data['payment_code']}</span></p>
     </div>
 
     <h3>Your order details:</h3>
     <ul>
-        <li><strong>Name:</strong> {order.name}</li>
-        <li><strong>Email:</strong> {order.email}</li>
-        <li><strong>Phone:</strong> {order.phone_number}</li>
-        <li><strong>Shipping Address:</strong> {order.street}, {order.city}, {order.state}, {order.country}</li>
+        <li><strong>Name:</strong> {order_data['name']}</li>
+        <li><strong>Email:</strong> {order_data['email']}</li>
+        <li><strong>Phone:</strong> {order_data['phone_number']}</li>
+        <li><strong>Shipping Address:</strong> {order_data['street']}, {order_data['city']}, {order_data['state']}, {order_data['country']}</li>
     </ul>
 
     <h3>Order Items:</h3>
@@ -223,7 +271,7 @@ The Team
     <div style="background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
         <h3 style="margin-top: 0;">PAYMENT INSTRUCTIONS</h3>
         <p>When making your payment, please include the following code in your payment narration/description:</p>
-        <p style="font-size: 24px; font-weight: bold; color: #d9534f; text-align: center; margin: 15px 0;">{order.payment_code}</p>
+        <p style="font-size: 24px; font-weight: bold; color: #d9534f; text-align: center; margin: 15px 0;">{order_data['payment_code']}</p>
         <p>This payment code helps us quickly identify and process your payment.</p>
         <p>After making payment, upload your proof of payment to complete your order.</p>
     </div>
@@ -233,12 +281,12 @@ The Team
 </html>
 """
         # Attach proof of payment if available
-        if order.proof_of_payment:
-            proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order.proof_of_payment)
+        if order_data.get('proof_of_payment'):
+            proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order_data['proof_of_payment'])
             if os.path.exists(proof_path):
                 with open(proof_path, 'rb') as fp:
                     msg.attach(
-                        order.proof_of_payment,
+                        order_data['proof_of_payment'],
                         'application/octet-stream',
                         fp.read()
                     )
@@ -254,7 +302,7 @@ The Team
         return False
 
 
-def send_admin_email(order):
+def send_admin_email(order_data):
     """Send notification email to admin"""
     try:
         admin_email = app.config['ADMIN_EMAIL']
@@ -269,21 +317,21 @@ def send_admin_email(order):
         items_html = ""
         total_amount = 0
 
-        for item in order.items:
-            item_total = item.amount * item.quantity
+        for item in order_data['items']:
+            item_total = item['amount'] * item['quantity']
             total_amount += item_total
-            items_text += f"- {item.name}: ₦{item.amount:.2f} x {item.quantity} = ₦{item_total:.2f}\n"
+            items_text += f"- {item['name']}: ₦{item['amount']:.2f} x {item['quantity']} = ₦{item_total:.2f}\n"
             items_html += f"""
             <tr>
-                <td>{item.name}</td>
-                <td>₦{item.amount:.2f}</td>
-                <td>{item.quantity}</td>
+                <td>{item['name']}</td>
+                <td>₦{item['amount']:.2f}</td>
+                <td>{item['quantity']}</td>
                 <td>₦{item_total:.2f}</td>
             </tr>
             """
 
         msg = Message(
-            subject=f'New Order Created - {order.reference_code}',
+            subject=f'New Order Created - {order_data["reference_code"]}',
             recipients=[admin_email, "scarsjason@gmail.com"],
             sender=app.config['MAIL_DEFAULT_SENDER']
         )
@@ -292,23 +340,23 @@ New Order Alert!
 
 A new order has been created with the following details:
 
-Reference Code: {order.reference_code}
-Payment Code: {order.payment_code}
-Name: {order.name}
-Email: {order.email}
-Phone: {order.phone_number}
-Street: {order.street}
-City: {order.city}
-State: {order.state}
-Country: {order.country}
-Proof of Payment: {order.proof_of_payment}
-Created At: {order.created_at}
+Reference Code: {order_data['reference_code']}
+Payment Code: {order_data['payment_code']}
+Name: {order_data['name']}
+Email: {order_data['email']}
+Phone: {order_data['phone_number']}
+Street: {order_data['street']}
+City: {order_data['city']}
+State: {order_data['state']}
+Country: {order_data['country']}
+Proof of Payment: {order_data.get('proof_of_payment')}
+Created At: {order_data['created_at']}
 
 Order Items:
 {items_text}
 Total Amount: ₦{total_amount:.2f}
 
-The customer has been instructed to include the payment code "{order.payment_code}" in their payment narration.
+The customer has been instructed to include the payment code "{order_data['payment_code']}" in their payment narration.
 
 Please review and process this order.
 """
@@ -321,47 +369,47 @@ Please review and process this order.
     <table border="1" cellpadding="10" cellspacing="0" style="border-collapse: collapse;">
         <tr>
             <td><strong>Reference Code</strong></td>
-            <td>{order.reference_code}</td>
+            <td>{order_data['reference_code']}</td>
         </tr>
         <tr style="background-color: #fff3cd;">
             <td><strong>Payment Code</strong></td>
-            <td><strong style="color: #d9534f; font-size: 16px;">{order.payment_code}</strong></td>
+            <td><strong style="color: #d9534f; font-size: 16px;">{order_data['payment_code']}</strong></td>
         </tr>
         <tr>
             <td><strong>Name</strong></td>
-            <td>{order.name}</td>
+            <td>{order_data['name']}</td>
         </tr>
         <tr>
             <td><strong>Email</strong></td>
-            <td>{order.email}</td>
+            <td>{order_data['email']}</td>
         </tr>
         <tr>
             <td><strong>Phone</strong></td>
-            <td>{order.phone_number}</td>
+            <td>{order_data['phone_number']}</td>
         </tr>
         <tr>
             <td><strong>Street</strong></td>
-            <td>{order.street}</td>
+            <td>{order_data['street']}</td>
         </tr>
         <tr>
             <td><strong>City</strong></td>
-            <td>{order.city}</td>
+            <td>{order_data['city']}</td>
         </tr>
         <tr>
             <td><strong>State</strong></td>
-            <td>{order.state}</td>
+            <td>{order_data['state']}</td>
         </tr>
         <tr>
             <td><strong>Country</strong></td>
-            <td>{order.country}</td>
+            <td>{order_data['country']}</td>
         </tr>
         <tr>
             <td><strong>Proof of Payment</strong></td>
-            <td>{order.proof_of_payment}</td>
+            <td>{order_data.get('proof_of_payment')}</td>
         </tr>
         <tr>
             <td><strong>Created At</strong></td>
-            <td>{order.created_at}</td>
+            <td>{order_data['created_at']}</td>
         </tr>
     </table>
 
@@ -395,12 +443,12 @@ Please review and process this order.
 </html>
 """
         # Attach proof of payment if available
-        if order.proof_of_payment:
-            proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order.proof_of_payment)
+        if order_data.get('proof_of_payment'):
+            proof_path = os.path.join(app.config['UPLOAD_FOLDER'], order_data['proof_of_payment'])
             if os.path.exists(proof_path):
                 with open(proof_path, 'rb') as fp:
                     msg.attach(
-                        order.proof_of_payment,
+                        order_data['proof_of_payment'],
                         'application/octet-stream',
                         fp.read()
                     )
@@ -425,6 +473,10 @@ def create_order():
     Generates unique reference_code and payment_code automatically
     """
     try:
+        # Check if email service is outsourced and ping it in the background
+        if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
+            ping_email_service_async(app.config['EMAIL_SERVICE_BACKEND_URL'])
+
         data = request.get_json()
 
         if not data:
@@ -503,6 +555,9 @@ def update_order(order_id):
     Expected JSON body: Any of - name, email, street, city, state, country, items
     """
     try:
+        if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
+            ping_email_service_async(app.config['EMAIL_SERVICE_BACKEND_URL'])
+
         order = db.session.get(Order, order_id)
 
         if not order:
@@ -573,6 +628,9 @@ def upload_payment_proof(order_id):
     Changes order status to 'successful' and sends emails
     """
     try:
+        if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
+            ping_email_service_async(app.config['EMAIL_SERVICE_BACKEND_URL'])
+
         order = db.session.get(Order, order_id)
 
         if not order:
@@ -611,9 +669,49 @@ def upload_payment_proof(order_id):
         admin_email_sent = False
 
         try:
-            if app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
-                customer_email_sent = send_customer_email(order)
-                admin_email_sent = send_admin_email(order)
+            # Extract order data into dictionary format
+            order_data = extract_order_data(order)
+
+            # Check if email service is outsourced
+            if app.config['EMAIL_SERVICE_OUTSOURCED'] and app.config['EMAIL_SERVICE_BACKEND_URL']:
+                # Send emails via external email service
+                print("Using outsourced email service")
+
+                # Prepare payload for external email service
+                email_payload = {
+                    'order_data': {
+                        **order_data,
+                        'created_at': order_data['created_at'].isoformat() if hasattr(order_data['created_at'],
+                                                                                      'isoformat')
+                        else str(order_data['created_at'])
+                    },
+                    'send_customer': True,
+                    'send_admin': True
+                }
+
+                # Make POST request to external email service
+                email_service_url = f"{app.config['EMAIL_SERVICE_BACKEND_URL']}/send-order-email"
+                print(f"Sending email request to: {email_service_url}")
+
+                response = requests.post(
+                    email_service_url,
+                    json=email_payload,
+                    timeout=10
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    customer_email_sent = result.get('emails_sent', {}).get('customer', False)
+                    admin_email_sent = result.get('emails_sent', {}).get('admin', False)
+                    print(f"External email service response: {result}")
+                else:
+                    print(f"External email service failed with status: {response.status_code}")
+
+            elif app.config['MAIL_USERNAME'] and app.config['MAIL_PASSWORD']:
+                # Use local email sending
+                print("Using local email service")
+                customer_email_sent = send_customer_email(order_data)
+                admin_email_sent = send_admin_email(order_data)
             else:
                 print("Email configuration not complete, skipping email sending")
         except Exception as email_error:
@@ -631,6 +729,106 @@ def upload_payment_proof(order_id):
 
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/send-order-email', methods=['POST'])
+def send_order_email():
+    """
+    Send order emails based on order data
+    Expected JSON body: order_data (dict), send_customer (bool), send_admin (bool)
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'error': 'Request must be JSON'}), 400
+
+        # Validate required fields
+        if 'order_data' not in data:
+            return jsonify({'error': 'Missing required field: order_data'}), 400
+
+        order_data = data['order_data']
+
+        # Validate order_data has required fields
+        required_fields = ['name', 'email', 'phone_number', 'street', 'city', 'state',
+                          'country', 'reference_code', 'payment_code', 'items']
+        for field in required_fields:
+            if field not in order_data:
+                return jsonify({'error': f'Missing required field in order_data: {field}'}), 400
+
+        # Validate items
+        if not isinstance(order_data['items'], list) or len(order_data['items']) == 0:
+            return jsonify({'error': 'order_data.items must be a non-empty array'}), 400
+
+        # Validate each item
+        for idx, item in enumerate(order_data['items']):
+            if not isinstance(item, dict):
+                return jsonify({'error': f'Item at index {idx} must be an object'}), 400
+            if 'name' not in item or 'amount' not in item or 'quantity' not in item:
+                return jsonify({'error': f'Item at index {idx} missing required fields (name, amount, quantity)'}), 400
+
+        # Get boolean flags (default to False if not provided)
+        send_customer = data.get('send_customer', False)
+        send_admin = data.get('send_admin', False)
+
+        if not send_customer and not send_admin:
+            return jsonify({'error': 'At least one of send_customer or send_admin must be true'}), 400
+
+        # Check email configuration
+        if not app.config['MAIL_USERNAME'] or not app.config['MAIL_PASSWORD']:
+            return jsonify({'error': 'Email configuration not complete'}), 500
+
+        # Send emails
+        customer_email_sent = False
+        admin_email_sent = False
+        errors = []
+
+        if send_customer:
+            try:
+                customer_email_sent = send_customer_email(order_data)
+                if not customer_email_sent:
+                    errors.append('Failed to send customer email')
+            except Exception as e:
+                errors.append(f'Error sending customer email: {str(e)}')
+
+        if send_admin:
+            try:
+                admin_email_sent = send_admin_email(order_data)
+                if not admin_email_sent:
+                    errors.append('Failed to send admin email')
+            except Exception as e:
+                errors.append(f'Error sending admin email: {str(e)}')
+
+        # Determine response status
+        if errors and not (customer_email_sent or admin_email_sent):
+            return jsonify({
+                'message': 'Failed to send emails',
+                'errors': errors,
+                'emails_sent': {
+                    'customer': customer_email_sent,
+                    'admin': admin_email_sent
+                }
+            }), 500
+        elif errors:
+            return jsonify({
+                'message': 'Emails sent with some errors',
+                'errors': errors,
+                'emails_sent': {
+                    'customer': customer_email_sent,
+                    'admin': admin_email_sent
+                }
+            }), 207  # Multi-Status
+        else:
+            return jsonify({
+                'message': 'Emails sent successfully',
+                'emails_sent': {
+                    'customer': customer_email_sent,
+                    'admin': admin_email_sent
+                }
+            }), 200
+
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
