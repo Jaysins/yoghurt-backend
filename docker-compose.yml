@@ -9,12 +9,12 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/yoghurt
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/yoghurt
     networks:
-      - ohship_default
+      - shared_dev_network
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
 networks:
-  ohship_default:
+  shared_dev_network:
     external: true
